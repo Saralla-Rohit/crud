@@ -1,120 +1,118 @@
-# CRUD Application on Kubernetes with Minikube
+from pathlib import Path
 
-This README documents how I built and ran my Spring Boot CRUD application in Docker, deployed it to a local Kubernetes cluster using Minikube, exposed it with a `NodePort` Service, and accessed it through the Minikube node IP and port.
+readme = r"""<div align="center">
 
-## Project overview
+# ☸️ Spring Boot CRUD on Kubernetes
 
-- **Application:** Spring Boot CRUD application
-- **Container image:** `crud:1.0`
-- **Kubernetes Deployment:** `crud-deployment`
-- **Replicas:** 3
-- **Container port:** `8080`
-- **Kubernetes Service:** `crud-service`
-- **Service type:** `NodePort`
-- **Minikube node IP in my environment:** `192.168.49.2`
-- **NodePort assigned in my environment:** `31345`
+### Fedora · Docker · Minikube · Kubernetes
 
-> The node IP and NodePort above are the values observed in my environment. They can be different on another machine or after recreating the Service/cluster.
+**Build → Load → Deploy → Expose → Access**
 
-## How the pieces fit together
+![Kubernetes](https://img.shields.io/badge/Kubernetes-Local%20Cluster-326CE5?logo=kubernetes&logoColor=white)
+![Spring Boot](https://img.shields.io/badge/Spring%20Boot-CRUD-6DB33F?logo=springboot&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Image-2496ED?logo=docker&logoColor=white)
+![Minikube](https://img.shields.io/badge/Minikube-3%20Replicas-2E8B57)
 
-1. **Docker image** packages the Spring Boot application and its dependencies.
-2. **Minikube** runs a local Kubernetes cluster.
-3. **Deployment** tells Kubernetes to maintain three replicas of the application.
-4. **Pods** run the containers. Each application instance listens on port `8080`.
-5. **Service (`NodePort`)** gives the Pods a stable access point and exposes the service on a port of the Kubernetes node.
-6. **Browser/client** can reach the app using the Minikube node IP and NodePort, if that address is reachable from the client.
+</div>
 
-```text
-Browser / curl
-     |
-     | http://192.168.49.2:31345
-     v
-Minikube node (NodePort 31345)
-     |
-     v
-Kubernetes Service: crud-service (port 8080)
-     |
-     +------> Pod 1 (container port 8080)
-     +------> Pod 2 (container port 8080)
-     +------> Pod 3 (container port 8080)
+---
+
+## 🗺️ Deployment architecture
+
+```mermaid
+flowchart TB
+    B(["🌐 Browser"])
+    N["Minikube NodePort<br/>MINIKUBE-IP:NODEPORT"]
+    S["Service · crud-service<br/>Service port: 8080"]
+    D["Deployment · crud-deployment<br/>Desired replicas: 3"]
+
+    B --> N --> S
+    S --> P1["Pod 1<br/>Spring Boot :8080"]
+    S --> P2["Pod 2<br/>Spring Boot :8080"]
+    S --> P3["Pod 3<br/>Spring Boot :8080"]
+    D -. maintains .-> P1
+    D -. maintains .-> P2
+    D -. maintains .-> P3
 ```
 
-## Prerequisites
+## 🚀 The workflow
 
-- Docker
-- `kubectl`
-- Minikube
-- The project’s Docker image built as `crud:1.0`
-- The Spring Boot application listening on `8080` inside the container
+```mermaid
+flowchart LR
+    A["1. Source code"] --> B["2. Docker build"]
+    B --> C["3. Load image into Minikube"]
+    C --> D["4. Apply Deployment"]
+    D --> E["5. Apply Service"]
+    E --> F(["6. Open app"])
+```
 
-Check the tools:
+---
+
+## 0 · Install the tools
+
+> **Already installed?** Skip to [Step 1](#1--start-minikube).
+
+### Docker
+
+```bash
+sudo dnf install -y docker
+sudo systemctl enable --now docker
+sudo usermod -aG docker "$USER"
+```
+
+Sign out and sign back in after adding your user to the `docker` group.
 
 ```bash
 docker --version
-kubectl version --client
-minikube version
+docker info
 ```
 
-## 1. Start Minikube
+### kubectl + Minikube
+
+Follow the official installation guides:
+
+| Tool | Installation guide | Verify |
+|---|---|---|
+| `kubectl` | [Kubernetes tools](https://kubernetes.io/docs/tasks/tools/) | `kubectl version --client` |
+| Minikube | [Minikube start guide](https://minikube.sigs.k8s.io/docs/start/) | `minikube version` |
+
+---
+
+## 1 · Start Minikube
 
 ```bash
 minikube start
-```
-
-This starts the local Kubernetes cluster. In this environment, the node was named `minikube`.
-
-Check cluster and node status:
-
-```bash
 minikube status
 kubectl get nodes -o wide
 ```
 
-The node should show `Ready`.
+**Ready check:** the Minikube node should show `Ready`.
 
-## 2. Build the Docker image
+---
 
-Run this from the project directory containing the `Dockerfile`:
+## 2 · Build and load the image
+
+Run these commands in the project directory containing your `Dockerfile`.
 
 ```bash
 docker build -t crud:1.0 .
-```
-
-Check that the image exists in the host Docker image list:
-
-```bash
 docker images
-```
-
-**Important:** An image built by Fedora’s Docker daemon is not automatically available inside Minikube. Minikube uses its own container runtime (in this environment, `containerd`), so load the image into Minikube next.
-
-## 3. Load the image into Minikube
-
-```bash
 minikube image load crud:1.0
-```
-
-This copies the locally built image into Minikube so the Kubernetes Pods can use it without pulling it from a remote registry.
-
-Verify that the image is available:
-
-```bash
 minikube image ls | grep crud
 ```
 
-The Deployment uses:
+<details>
+<summary><strong>💡 Why load the image?</strong></summary>
 
-```yaml
-image: crud:1.0
-imagePullPolicy: IfNotPresent
-```
+The host's Docker image store and Minikube's image store are separate in this setup. Minikube uses `containerd`, so loading the image makes `crud:1.0` available to the cluster without pulling it from a registry.
 
-`IfNotPresent` tells Kubernetes to use the image already available on the node when it is present.
+</details>
 
-## 4. Create the Deployment
+---
 
-Save the following as `crud-deployment.yaml`. Use spaces for indentation; YAML indentation must not contain tabs.
+## 3 · Create the Deployment
+
+Create **`crud-deployment.yaml`**:
 
 ```yaml
 apiVersion: apps/v1
@@ -139,41 +137,30 @@ spec:
             - containerPort: 8080
 ```
 
-Apply it:
+Apply it and wait for the rollout:
 
 ```bash
 kubectl apply -f crud-deployment.yaml
-```
-
-What the main fields mean:
-
-- `kind: Deployment`: creates a controller that maintains the desired number of Pods.
-- `replicas: 3`: asks Kubernetes to keep three application Pods running.
-- `selector.matchLabels` and `template.metadata.labels`: connect the Deployment to its Pods using the label `app: crud`.
-- `image: crud:1.0`: selects the application image.
-- `containerPort: 8080`: documents the port used by the application inside each container. **It does not by itself publish the port on the Fedora host.**
-
-Check the Deployment and Pods:
-
-```bash
-kubectl get deployments
+kubectl rollout status deployment/crud-deployment
 kubectl get pods -o wide
 ```
 
-Wait until all three Pods show `Running` and `READY 1/1`.
+### What connects to what?
 
-If a Pod does not start, inspect its details and logs:
+| YAML field | Purpose |
+|---|---|
+| `replicas: 3` | Kubernetes maintains three Pods |
+| `app: crud` | Connects the Deployment selector, Pod labels, and Service selector |
+| `image: crud:1.0` | Image used to create each container |
+| `containerPort: 8080` | Documents the app's container port; it does not publish a Fedora host port |
 
-```bash
-kubectl describe pod <pod-name>
-kubectl logs <pod-name>
-```
+Expected: **3 Pods** in `Running` state, each showing `1/1` ready.
 
-Replace `<pod-name>` with an actual Pod name from `kubectl get pods`.
+---
 
-## 5. Create a NodePort Service
+## 4 · Create the NodePort Service
 
-Save this as `crud-service.yaml`:
+Create **`crud-service.yaml`**:
 
 ```yaml
 apiVersion: v1
@@ -194,98 +181,149 @@ Apply it:
 
 ```bash
 kubectl apply -f crud-service.yaml
+kubectl get svc crud-service
 ```
 
-Check the Service:
+### Understand the ports
 
-```bash
-kubectl get service crud-service
-kubectl get svc
-```
+| Setting | Meaning |
+|---|---|
+| `port: 8080` | Port exposed by the Service inside the cluster |
+| `targetPort: 8080` | Port on the Spring Boot containers |
+| `NodePort` | Port used to reach the Service through the Minikube node |
 
-In my environment, the output included:
+Example output from this setup:
 
 ```text
 NAME           TYPE       CLUSTER-IP      EXTERNAL-IP   PORT(S)
 crud-service   NodePort   10.104.1.217    <none>        8080:31345/TCP
 ```
 
-This means:
+Here, **`31345` is an example NodePort**. Your assigned port may differ.
 
-- `port: 8080` is the Service port inside the Kubernetes cluster.
-- `targetPort: 8080` is the port on each selected Pod that receives traffic.
-- `NodePort` exposes the Service through a port on the node. Kubernetes assigned `31345` in this environment.
+---
 
+## 5 · 🌐 Access the application
 
-
-## 6. Access the application using the Minikube node IP and NodePort
-
-Find the node IP:
-
-```bash
-kubectl get nodes -o wide
-```
-
-In my environment, the node IP was `192.168.49.2`. Find the assigned NodePort:
-
-```bash
-kubectl get svc crud-service
-```
-
-The Service showed NodePort `31345`, so the URL was:
-
-```text
-http://192.168.49.2:31345
-```
-
-Open that URL in a browser or test it with:
-
-```bash
-curl -i http://192.168.49.2:31345
-```
-
-The exact response depends on the application's routes. A `404` at `/` can mean the server is reachable but the application does not define a handler for `/`; try a CRUD endpoint defined by the project.
-
-### If the node IP is not reachable
-
-Minikube's node IP is often reachable from the host when using the Docker driver on Linux, but it is not guaranteed to be reachable in every Minikube driver/network configuration. If the URL does not connect, run:
+Get the current values:
 
 ```bash
 minikube ip
+kubectl get svc crud-service
+```
+
+Example values:
+
+| Setting | Example |
+|---|---|
+| Minikube IP | `192.168.49.2` |
+| NodePort | `31345` |
+| Application URL | `http://192.168.49.2:31345` |
+
+Open this example URL in your browser:
+
+**[http://192.168.49.2:31345](http://192.168.49.2:31345)**
+
+> Use the IP and NodePort reported by your own commands. The example values may change.
+
+### If the NodePort URL does not open
+
+**Option A — Ask Minikube to open the Service**
+
+```bash
 minikube service crud-service
 ```
 
-`minikube service crud-service` can open the Service URL or print the URL appropriate to the current environment. For local development, another option is:
+**Option B — Forward a local port**
 
 ```bash
 kubectl port-forward service/crud-service 8080:8080
 ```
 
-Then browse to `http://localhost:8080` while that command remains running. Port forwarding is a temporary local access method; the NodePort Service is the Kubernetes exposure method used in this project.
+Then open **http://localhost:8080** while the command is running.
 
-## 7. What “publicly hosted” means here
+---
 
-A `NodePort` makes the application available through the Kubernetes node's network address and NodePort, provided the client can reach that node. The URL `http://192.168.49.2:31345` is a **private/local network address in this setup**, not automatically a public Internet URL.
+## 6 · 🔍 Troubleshooting
 
-To make an application available to people outside your computer or home network, additional networking is needed—for example, a suitably configured public server, firewall/router rules, DNS, and usually HTTPS. Do not expose a development Minikube cluster directly to the Internet without considering authentication, TLS, firewall rules, and application security.
+| Symptom | Check / action |
+|---|---|
+| `ImagePullBackOff` | Run `minikube image load crud:1.0`; check the image tag |
+| Pods are not ready | Run `kubectl describe pod <pod-name>` and `kubectl logs deployment/crud-deployment` |
+| URL does not open | Recheck `minikube ip` and `kubectl get svc crud-service` |
+| Service has no endpoints | Ensure the Pods have label `app: crud` and the Service selector matches |
+| YAML error | Use spaces, not tabs |
+| `404 Not Found` | The server may be reachable, but `/` may not be mapped; try an actual CRUD endpoint |
 
-## Command sequence summary
-
-For a fresh local run, assuming the Docker image and YAML files are ready:
+### Handy diagnostic commands
 
 ```bash
-minikube start
+kubectl get nodes -o wide
+kubectl get deployments
+kubectl get pods -o wide
+kubectl get svc
+kubectl get endpoints crud-service
+kubectl logs deployment/crud-deployment
+kubectl describe pod <pod-name>
+```
+
+---
+
+## 7 · 🔄 Rebuild after changing your code
+
+After rebuilding the same image tag, load it into Minikube and restart the Deployment:
+
+```bash
 docker build -t crud:1.0 .
 minikube image load crud:1.0
-kubectl apply -f crud-deployment.yaml
-kubectl get pods
-kubectl apply -f crud-service.yaml
-kubectl get svc
-kubectl get nodes -o wide
+kubectl rollout restart deployment/crud-deployment
+kubectl rollout status deployment/crud-deployment
 ```
 
-Then use the Minikube node IP and the NodePort shown by `kubectl get svc crud-service`, for example:
+---
+
+## ⚠️ Local access is not public hosting
+
+`192.168.49.2` is a private/local address in this setup. **NodePort does not automatically make the app accessible over the public Internet.** Public hosting requires a publicly reachable host plus suitable networking, firewall, DNS, and HTTPS configuration.
+
+---
+
+## ⚡ Quick command reference
+
+Run from the project directory:
+
+```bash
+# Start the local cluster
+minikube start
+
+# Build and transfer the image
+docker build -t crud:1.0 .
+minikube image load crud:1.0
+
+# Deploy the app and expose it
+kubectl apply -f crud-deployment.yaml
+kubectl apply -f crud-service.yaml
+
+# Verify and get the access details
+kubectl get pods
+kubectl get svc crud-service
+minikube ip
+```
+
+Build your URL using the current values:
 
 ```text
-http://192.168.49.2:31345
+http://<MINIKUBE-IP>:<NODEPORT>
 ```
+
+<div align="center">
+
+**Built with Spring Boot · Docker · Kubernetes · Minikube**
+
+</div>
+"""
+
+path = Path("/mnt/data/README.md")
+path.write_text(readme, encoding="utf-8")
+print(f"Created: {path}")
+print(f"Size: {path.stat().st_size:,} bytes")
