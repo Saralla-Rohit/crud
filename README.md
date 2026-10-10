@@ -319,4 +319,3 @@ http://<MINIKUBE-IP>:<NODEPORT>
 **Built with Spring Boot · Docker · Kubernetes · Minikube**
 
 </div>
-"""
