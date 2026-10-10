@@ -1,6 +1,4 @@
-from pathlib import Path
-
-readme = r"""<div align="center">
+<div align="center">
 
 # ☸️ Spring Boot CRUD on Kubernetes
 
@@ -322,8 +320,3 @@ http://<MINIKUBE-IP>:<NODEPORT>
 
 </div>
 """
-
-path = Path("/mnt/data/README.md")
-path.write_text(readme, encoding="utf-8")
-print(f"Created: {path}")
-print(f"Size: {path.stat().st_size:,} bytes")
